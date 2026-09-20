@@ -17,6 +17,58 @@ export interface BlogPost {
 
 export const posts: BlogPost[] = [
   {
+    slug: 'project-panama-boltffi-zero-copy-jvm-rust-bridge',
+    title: 'BoltFFI: Zero-Copy JVM to Rust Interop with Project Panama FFM',
+    date: '2026.09.20',
+    author: {
+      name: 'Max (McMmax)',
+      handle: 'McMmax',
+      role: 'Systems Architect & Security Researcher',
+      avatar: 'https://avatars.githubusercontent.com/u/156390123?v=4',
+    },
+    tags: ['systems','architecture','performance'],
+    readTime: '4 min read',
+    featured: false,
+    summary:
+      'Ditching legacy JNI overhead for Java 21 Foreign Function & Memory APIs: achieving 20-50ns downcalls and zero garbage-collected heap allocations on hot-path physics simulation.',
+    content: `
+<p class="lead">
+Building high-performance game servers on the JVM offers unmatched developer ergonomics, but garbage collection pauses and JNI calling overhead have historically crippled low-level simulation.
+</p>
+
+<p>
+With <strong>Project Panama</strong> (Foreign Function & Memory API in Java 21+), we replaced all legacy JNI bindings in our engine with <strong>BoltFFI</strong>.
+</p>
+
+<h2>Why JNI Was Dead on Arrival</h2>
+<p>
+Legacy JNI introduces between 150ns and 400ns of overhead per invocation, forces object pin boundaries, and demands allocating JVM wrapper objects on every native call. In a physics loop checking hundreds of swept AABBs per tick, JNI burns millions of cycles just crossing the language barrier.
+</p>
+
+<h2>The Panama FFM Architecture</h2>
+<p>
+Using <code>Linker.nativeLinker()</code> and off-heap <code>Arena.ofConfined()</code>, Java interacts directly with native C-ABI memory layouts without touching the Java Garbage Collector:
+</p>
+
+<pre><code class="language-java">// Zero-copy off-heap raytrace downcall via Panama FFM
+public boolean checkLineOfSight(MemorySegment observer, MemorySegment target) {
+    try {
+        return (boolean) RAYTRACE_DOWN_CALL.invokeExact(
+            observer.address(), 
+            target.address()
+        );
+    } catch (Throwable t) {
+        throw new AssertionError("FFI call failed", t);
+    }
+}
+</code></pre>
+
+<p>
+Benchmarks on our production servers demonstrated a drop in downcall overhead to <strong>22–45 nanoseconds</strong>—virtually indistinguishable from a standard C function call—with zero JVM heap allocations across hundreds of millions of raycasts.
+</p>
+    `,
+  },
+  {
     slug: 'replacing-redis-and-mongodb-with-spacetimedb-streaming-reducers',
     title: 'Why I Replaced Redis & MongoDB with SpacetimeDB Real-Time Streaming Reducers',
     date: '2026.09.17',
