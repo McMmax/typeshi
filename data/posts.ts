@@ -17,6 +17,63 @@ export interface BlogPost {
 
 export const posts: BlogPost[] = [
   {
+    slug: 'edgestamp-ebpf-microsecond-hitreg-at-10gbps',
+    title: 'EdgeStamp: Line-Rate eBPF Ingress & Microsecond-Precise Hit Registration',
+    date: '2026.09.23',
+    author: {
+      name: 'Max (McMmax)',
+      handle: 'McMmax',
+      role: 'Systems Architect & Security Researcher',
+      avatar: 'https://avatars.githubusercontent.com/u/156390123?v=4',
+    },
+    tags: ['networking','systems','anticheat'],
+    readTime: '5 min read',
+    featured: false,
+    summary:
+      'How we eliminated ping abuse and combat desync across our proxy fleet by stamping ingress TCP packets with hardware-clock timestamps directly inside the Linux kernel XDP driver.',
+    content: `
+<p class="lead">
+In fast-paced multiplayer combat, ping disparity is the enemy of fairness. High-latency players abuse lag compensation to hit around corners, while low-latency players suffer "phantom reaches." The root cause? Servers trust client-reported timestamps or estimate latency using coarse application-layer ping loops.
+</p>
+
+<p>
+To solve this permanently, we built <strong>EdgeStamp</strong> into our custom Rust proxy (<code>internode</code>) and Linux kernel eBPF layer.
+</p>
+
+<h2>The Kernel Boundary: XDP Microsecond Stamping</h2>
+<p>
+Before an incoming TCP packet even traverses the Linux network stack or reaches userland socket buffers, an eBPF program running at the eXpress Data Path (XDP) hook inspects the header:
+</p>
+
+<pre><code class="language-c">SEC("xdp")
+int filter_ingress_edgestamp(struct xdp_md *ctx) {
+    void *data = (void *)(long)ctx->data;
+    void *data_end = (void *)(long)ctx->data_end;
+    
+    // Parse Ethernet, IPv4, TCP headers
+    struct ethhdr *eth = data;
+    if ((void *)(eth + 1) > data_end) return XDP_PASS;
+    
+    // Read hardware monotonic timestamp in nanoseconds
+    __u64 edge_ts = bpf_ktime_get_ns();
+    
+    // Write timestamp into packet metadata header for zero-copy splice
+    return record_edge_metadata(ctx, edge_ts);
+}
+</code></pre>
+
+<h2>Preserving Timestamps Across Protocol Translation</h2>
+<p>
+When packets leave <code>internode</code> and route into our Minestom game servers (<code>stomzy</code>), the microsecond edge timestamp is preserved directly in the internal protocol frame:
+</p>
+
+<ul>
+  <li><strong>Immunity to Network Jitter:</strong> Even if a game thread experiences a temporary 5ms spike, the physics simulation replays the combat hit using the exact microsecond the packet touched the edge network card.</li>
+  <li><strong>Fake Lag Detection:</strong> Players deliberately choking outgoing packets with software disablers are flagged instantly: the spread between consecutive EdgeStamps reveals artificial buffering with sub-millisecond precision.</li>
+</ul>
+    `,
+  },
+  {
     slug: 'project-panama-boltffi-zero-copy-jvm-rust-bridge',
     title: 'BoltFFI: Zero-Copy JVM to Rust Interop with Project Panama FFM',
     date: '2026.09.20',
