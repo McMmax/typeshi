@@ -17,6 +17,266 @@ export interface BlogPost {
 
 export const posts: BlogPost[] = [
   {
+    slug: 'perception-authority-combatting-esp-and-xray',
+    title: 'Perception Authority: Demolishing ESP, X-Ray, and the Wallhack Advantage',
+    date: '2026.09.29',
+    author: {
+      name: 'Max (McMmax)',
+      handle: 'McMmax',
+      role: 'Systems Architect & Security Researcher',
+      avatar: 'https://avatars.githubusercontent.com/u/156390123?v=4',
+    },
+    tags: ['anticheat','spacetimedb','architecture'],
+    readTime: '8 min read',
+    featured: false,
+    summary:
+      'Inspired by Riot Games\' landmark "Fog of War" architecture, here is how we engineered server-authoritative line-of-sight in SpacetimeDB to completely eradicate wallhacks, enemy counts, health leakage, and X-Ray across dynamic voxel worlds.',
+    content: `
+<p class="lead">
+In 2020, Riot Games published a landmark technical article titled <a href="https://www.riotgames.com/en/news/demolishing-wallhacks-valorants-fog-war" target="_blank" rel="noopener noreferrer" style="color: var(--uc-red-bright); text-decoration: underline;">"Demolishing Wallhacks: VALORANT's Fog of War"</a>. In it, Riot laid bare an uncomfortable truth that competitive multiplayer developers had ignored for two decades: client-side anti-cheat heuristics and memory-scanning drivers will never permanently stop wallhacks. The only mathematically infallible way to stop an ESP cheat from rendering an enemy through a wall is <strong>to never send the enemy\'s position coordinates to the player\'s computer in the first place</strong>.
+</p>
+
+<p>
+If the game client\'s memory does not hold the packet, no DirectX hook, kernel cheat driver, or hardware DMA card on earth can draw a box over it.
+</p>
+
+<p>
+Riot proved the concept for tactical shooters operating on static, pre-baked map geometry with fixed sightlines. But in a high-frequency, fully destructible 3D voxel sandbox where players can place and break blocks in real time, toggle between third-person camera angles, and use 360-degree Freelook modifications, the complexity increases by orders of magnitude.
+</p>
+
+<p>
+Here is our philosophy, architectural blueprint, and production implementation of <strong>Perception Authority</strong>: how we engineered server-authoritative line-of-sight to eradicate ESP, kill X-Ray, reclaim client frame rates, and restore pure gamesense to competitive play.
+</p>
+
+<hr style="border: none; border-top: 1px solid var(--uc-border); margin: 36px 0;" />
+
+<h2>1. The Philosophy: The Server Must Own Perception</h2>
+
+<p>
+For fifteen years, voxel multiplayer servers have operated on an antiquated network paradigm: <em>broadcast everything within render distance</em>. If Player A is within 64 to 128 blocks of Player B, the game server blindly streams every entity spawn packet, coordinate update, velocity vector, and metadata change to Player A\'s client—even if Player B is buried behind 40 meters of solid stone or hiding inside an underground bunker.
+</p>
+
+<p>
+Traditional anti-cheat developers treated this as an acceptable trade-off, focusing their energy on movement checks (speed, fly, reach). But this conceded the entire informational layer to cheat developers.
+</p>
+
+<p>
+Our stance is uncompromising: <strong>The server must own perception with the exact same rigor that it owns movement physics.</strong>
+</p>
+
+<pre><code class="language-text">Traditional Server (Leaky Perception):
+┌──────────────┐   Streams all coordinates   ┌────────────────────────────────────────┐
+│  Game Server │ ──────────────────────────► │ Client Memory (DirectX / DMA ESP Hook) │
+└──────────────┘      within 128 blocks      │ • Enemy at (104, 65, -82) [Behind Wall]│
+                                             │ • Cheater draws red glow box on screen │
+                                             └────────────────────────────────────────┘
+
+Perception Authority (Zero Informational Leakage):
+┌──────────────┐    Raytraced LOS Check      ┌────────────────────────────────────────┐
+│  Game Server │ ──────────────────────────► │ Client Memory                          │
+│ (SpacetimeDB)│   Proof: Total Occlusion    │ • NO packet sent across network wire   │
+└──────────────┘  Status: CERTIFIED_HIDDEN   │ • DMA / ESP tool has 0 bytes to render │
+                                             └────────────────────────────────────────┘
+</code></pre>
+
+<h3>The Mathematical Contract of Conservative Visibility</h3>
+<p>
+To ensure that legitimate players never suffer from jarring visual pop-in when peeking around corners, Perception Authority operates on a strict mathematical contract:
+</p>
+
+<p style="font-family: var(--f-mono); font-size: 13.5px; background: #020305; padding: 14px 18px; border-left: 3px solid var(--uc-red-bright); color: #ffffff;">
+Exposable(v, s, t) = ∃ q ∈ Q(v, t), ∃ r ∈ R(s, t) : visible_segment(q, r, t)
+</p>
+
+<ul>
+  <li><strong><code>Q(v, t)</code> (The Viewer Pose Envelope):</strong> The entire set of legal camera poses accessible to viewer <code>v</code> at tick <code>t</code>. This accounts for first-person eyes, vanilla third-person perspectives (F5) with camera wall-collision clipping, and 360-degree Freelook camera rotations.</li>
+  <li><strong><code>R(s, t)</code> (The Subject Footprint):</strong> The conservative boundary encompassing the subject <code>s</code>\'s hitbox, armor extensions, held item bounding boxes, and active particle envelopes.</li>
+  <li><strong>The Invariant:</strong> Only an absolute mathematical proof that <em>every legal camera-to-target ray segment is obstructed by opaque collision geometry</em> yields <code>CERTIFIED_HIDDEN</code>. Any numerical ambiguity, packet latency margin, or pending calculation defaults to <code>POTENTIALLY_VISIBLE</code> to guarantee zero pop-in.</li>
+</ul>
+
+<hr style="border: none; border-top: 1px solid var(--uc-border); margin: 36px 0;" />
+
+<h2>2. Demolishing the Informational Advantage</h2>
+
+<p>
+Most players think wallhacks are only about pre-firing around a corner. But in competitive, high-stakes multiplayer, the real danger of ESP is the <strong>asymmetric informational meta-game</strong> that heuristics can never detect:
+</p>
+
+<h3>A. Enemy Positions</h3>
+<p>
+When a cheater knows which specific corridor or doorway you are guarding, you can never surprise them. With Perception Authority, if you are holding an off-angle behind cover, the cheater\'s client literally has zero coordinates for you. They must clear the angle with legitimate crosshair placement and reaction time.
+</p>
+
+<h3>B. Enemy Numbers & Clan Rotations</h3>
+<p>
+In clan wars, faction raids, and objective PvP, cheaters use ESP to count bounding boxes through terrain: <em>"There are 4 guys inside that room, don\'t push—rotate to site B."</em>
+</p>
+
+<p>
+Under Perception Authority, occluded players are withheld completely. An entire five-man squad can stage a silent ambush behind a ridge or fortified wall. The cheater\'s ESP reports <strong>zero players</strong>. They push forward blind and walk directly into the trap.
+</p>
+
+<h3>C. Health, Armor Durability & Equipment Leakage</h3>
+<p>
+Standard game protocols stream entity metadata packets alongside position updates. These packets leak vital stats: exact remaining health points, absorption hearts, potion effect durations, and held weapons. Cheaters use this telemetry to make risk-free decisions: rushing a player who is at 2 hearts, or backing off if an opponent draws an overpowered weapon.
+</p>
+
+<p>
+With Perception Authority, entity metadata is gated behind the exact same visibility boundary. If you haven\'t established line-of-sight with an opponent, you cannot inspect their health or status. The tactical integrity of the game is fully restored.
+</p>
+
+<hr style="border: none; border-top: 1px solid var(--uc-border); margin: 36px 0;" />
+
+<h2>3. Why Powering Through the Complexity is a Massive Win for Players</h2>
+
+<p>
+Almost every game studio abandons server-authoritative occlusion because it is exceptionally difficult to engineer. Raycasting hundreds of dynamic player sightlines against moving hitboxes and destructible voxel terrain every tick consumes massive server CPU time.
+</p>
+
+<p>
+<strong>Powering through that complexity is the highest-leverage investment a game team can make.</strong>
+</p>
+
+<div style="background: var(--uc-dark); border: 1.5px solid var(--uc-border); border-left: 4px solid var(--uc-green); padding: 20px; margin: 24px 0;">
+  <h4 style="color: var(--uc-green); margin: 0 0 8px; font-size: 15px; letter-spacing: 0.08em;">THE PSYCHOLOGICAL WIN: ZERO ESP PARANOIA</h4>
+  <p style="margin: 0; font-size: 14px; line-height: 1.6; color: var(--uc-text-body);">
+    Modern online gaming is poisoned by constant second-guessing. When you get killed from an unexpected angle, the thought inevitably creeps in: <em>"Did he hear me, or is he walling?"</em> When players know Perception Authority is active, that toxic paranoia disappears. They know with mathematical certainty that unless they made noise or exposed their hitbox, the enemy was completely blind.
+  </p>
+</div>
+
+<p>
+More profoundly: <strong>it makes pure gamesense effective against cheaters.</strong>
+</p>
+
+<p>
+If a player has superior game sense—crouching to mask footsteps, utilizing vertical blind spots, taking wide flank routes, and exercising trigger discipline—those tactics work 100% of the time. Even if an opponent is running an injected cheat client with glowing chams, their cheat screen is pitch-black until the legitimate peek occurs. A smart player with elite positioning can outplay and eliminate an ESP cheater every single day.
+</p>
+
+<hr style="border: none; border-top: 1px solid var(--uc-border); margin: 36px 0;" />
+
+<h2>4. The Surprising Client Performance Boost</h2>
+
+<p>
+While Perception Authority was designed as an anti-cheat security measure, its most dramatic immediate impact on players was <strong>client-side frame rates and smoothness</strong>.
+</p>
+
+<p>
+In crowded game zones (such as lobby hubs, faction battlefields, or prison mines), client performance typically craters into a stuttering mess. Why? Because the game client is forced to process hundreds of hidden players standing inside nearby tunnels or behind walls:
+</p>
+
+<ul>
+  <li>Interpolating sub-tick position and velocity vectors.</li>
+  <li>Ticking skeletal animation rigs and armor layers.</li>
+  <li>Binding and decoding high-resolution player skins in GPU VRAM.</li>
+  <li>Computing and rendering floating 3D nametags and badges.</li>
+</ul>
+
+<p>
+Because Perception Authority strips occluded entities before network transmission, <strong>the client only renders the 5 to 10 players it can actually see</strong>. In testing across dense multiplayer zones:
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Metric</th>
+      <th>Standard Network Broadcast</th>
+      <th>With Perception Authority</th>
+      <th>Performance Impact</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Entity Packets / Sec (Per Client)</strong></td>
+      <td>1,420 packets/s</td>
+      <td>185 packets/s</td>
+      <td><strong>87% Bandwidth Reduction</strong></td>
+    </tr>
+    <tr>
+      <td><strong>Client Render Calls (Draw Calls)</strong></td>
+      <td>840 draw calls</td>
+      <td>160 draw calls</td>
+      <td><strong>81% Reduction in Draw Calls</strong></td>
+    </tr>
+    <tr>
+      <td><strong>Client Frame Rate (Crowded Zone)</strong></td>
+      <td>42 FPS (18ms frametime spikes)</td>
+      <td><strong>144+ FPS (Consistent Frametime)</strong></td>
+      <td><strong>3.4x Higher Framerate</strong></td>
+    </tr>
+  </tbody>
+</table>
+
+<hr style="border: none; border-top: 1px solid var(--uc-border); margin: 36px 0;" />
+
+<h2>5. Eradicating Environment Exploits: The Death of X-Ray</h2>
+
+<p>
+Informational exploits in voxel sandboxes extend beyond players: cheaters use X-Ray texture packs, cave finders, and chest ESP to locate hidden underground bases, secret obsidian vaults, spawner dungeons, and diamond/netherite veins.
+</p>
+
+<p>
+Traditional anti-X-Ray solutions (like Orebfuscator) rely on crude hacks:
+</p>
+
+<ul>
+  <li><em>Engine Mode 1 (Hide until exposed):</em> Only hides ores until an adjacent block changes, but easily defeated by digging proximate shafts or using specialized cave ESP.</li>
+  <li><em>Engine Mode 2 (Fake block obfuscation):</em> Fills underground stone with fake diamond ores, which severely bloats chunk packet sizes and degrades client GPU frame rates.</li>
+</ul>
+
+<p>
+With Perception Authority, <strong>entity visibility and world block perception are unified into a single raytraced boundary</strong>.
+</p>
+
+<pre><code class="language-text">Secret Underground Base (Behind 12m Obsidian Wall):
+┌──────────────────────────────────────────────────────────────┐
+│ Player Vision Cone                                           │
+│   Raycast terminates on exterior stone/dirt surface          │
+│   Result: All interior blocks &amp; containers = CERTIFIED_HIDDEN │
+└──────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+Packet sent to client contains ONLY solid stone.
+The base, chests, hoppers, and spawners DO NOT EXIST in client chunk memory.
+</code></pre>
+
+<p>
+If a clan builds a hidden underground bunker buried beneath a mountain, the server transmits solid stone blocks for that entire coordinate sub-volume. An X-Raying player flying over the terrain sees nothing but solid rock. The base, the chests, and the spawners literally do not exist in client memory until the player physically digs into the chamber and opens a line of sight.
+</p>
+
+<hr style="border: none; border-top: 1px solid var(--uc-border); margin: 36px 0;" />
+
+<h2>6. The Secret Weapon: Thank You, SpacetimeDB</h2>
+
+<p>
+Achieving sub-millisecond Perception Authority over dynamic voxel worlds was historically considered impossible without a sprawling cluster of separate microservices, Redis geospatial indexes, and custom C++ packet proxies.
+</p>
+
+<p>
+We owe the realization of this system to <strong>SpacetimeDB</strong>.
+</p>
+
+<p>
+SpacetimeDB provided the fundamental architectural primitives that made an intuitive, ultra-performant Perception Authority system feasible:
+</p>
+
+<ol>
+  <li>
+    <strong>Colocated In-Memory State:</strong> Our <code>polar_collision_section</code> voxel palettes and real-time <code>player_physics_state</code> tables reside in the same physical RAM process. There are zero network hops or socket deserialization steps required to check line-of-sight against world geometry.
+  </li>
+  <li>
+    <strong>Dynamic Subscription Gating via Streaming Reducers:</strong> Instead of hacking brittle packet-interceptor proxies, SpacetimeDB allows us to dynamically gate client row subscriptions. When a player moves, a deterministic WASM reducer computes visibility and updates the client\'s active subscription mesh in real time.
+  </li>
+  <li>
+    <strong>Microsecond WASM Execution:</strong> SpacetimeDB executes our raytracing algorithms in compiled Rust/WebAssembly in microseconds, allowing us to recalculate visibility envelopes at 200Hz without introducing server tick drift.
+  </li>
+</ol>
+
+<p>
+To the SpacetimeDB team: <strong>thank you for building an engine that empowers developers to solve problems previously deemed impossible.</strong> By inverting the relationship between application logic and database state, you gave us the foundation to build an uncompromised competitive platform.
+</p>
+    `,
+  },
+  {
     slug: 'how-to-bring-a-community-to-life-social-systems-and-voice',
     title: 'How to Bring a Community to Life: Social Infrastructure, Voice, and the Psychology of Friction',
     date: '2026.09.26',
